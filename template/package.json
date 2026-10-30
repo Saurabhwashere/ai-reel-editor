@@ -1,0 +1,37 @@
+{
+  "name": "ai-reel-editor-project",
+  "version": "0.9.1",
+  "private": true,
+  "description": "Remotion project used by the /ai-reel-editor Claude skill",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render Reel",
+    "transcribe": "node scripts/transcribe.mjs",
+    "cut": "node scripts/cut.mjs",
+    "ingest": "node scripts/ingest.mjs",
+    "storyboard": "node scripts/storyboard.mjs",
+    "takes": "node scripts/takes.mjs",
+    "record": "node scripts/record-site.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.539",
+    "@remotion/media-parser": "4.0.539",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.539",
+    "@remotion/captions": "4.0.539",
+    "@remotion/install-whisper-cpp": "4.0.539",
+    "@fontsource/inter": "5.3.0",
+    "@mediapipe/tasks-vision": "1.2.0",
+    "@remotion/three": "4.0.539",
+    "@react-three/fiber": "9.8.2",
+    "three": "0.186.1",
+    "@remotion/renderer": "4.0.539",
+    "playwright-core": "1.64.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.8",
+    "typescript": "5.8.3",
+    "@types/three": "0.186.0"
+  }
+}

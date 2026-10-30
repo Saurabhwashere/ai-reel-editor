@@ -1,0 +1,14 @@
+# your footage and outputs never go in the repo
+raw/
+exports/
+*.mp4
+*.mov
+*.m4v
+*.webm
+
+# generated
+node_modules/
+.remotion/
+storyboard/
+public/cutouts/
+.DS_Store
