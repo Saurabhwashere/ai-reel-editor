@@ -12,6 +12,8 @@ import { FPS, PUBLIC, WIN } from './lib.mjs';
 
 const [cmd, name] = process.argv.slice(2);
 if (!['new', 'render'].includes(cmd) || !name) throw new Error('Usage: node scripts/hf.mjs new|render <name>');
+// the name becomes a folder and a shell argument on Windows: letters, digits, - and _ only
+if (!/^[\w-]+$/.test(name)) throw new Error('The effect name may only use letters, numbers, - and _');
 if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`HyperFrames needs Node 22+, this is ${process.versions.node}`);
 
 // Homebrew first: an old ffmpeg elsewhere on PATH (Anaconda ships 4.3) fails with "Unrecognized option 'deadline'"
@@ -36,7 +38,7 @@ if (cmd === 'new') {
 } else {
   if (!existsSync(dir)) throw new Error(`No hyperframes/${name}: run "new" first`);
   mkdirSync(join(PUBLIC, 'hyperframes'), { recursive: true });
-  const out = join(PUBLIC, 'hyperframes', `${name}.webm`);
-  hf(['render', '--format', 'webm', '--fps', String(FPS), '--quality', 'looks', '--output', out], dir);
+  // relative on purpose: no home-folder path ever reaches the Windows shell
+  hf(['render', '--format', 'webm', '--fps', String(FPS), '--quality', 'looks', '--output', `../../public/hyperframes/${name}.webm`], dir);
   console.log(`OK public/hyperframes/${name}.webm. Use it: { "kind": "hyperframe", "src": "hyperframes/${name}.webm", "at": ..., "until": ... }`);
 }

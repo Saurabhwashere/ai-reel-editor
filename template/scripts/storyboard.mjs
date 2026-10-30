@@ -6,11 +6,12 @@
 //
 // Run it in the background and wait for it to exit. Result: storyboard/review.json.
 // To answer notes on the next round, write storyboard/answers.json: { "<beat id>": "what changed" }.
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
-import { FPS, PUBLIC, WIN } from './lib.mjs';
+import { FPS, PUBLIC, WIN, remotion } from './lib.mjs';
 
 const DIR = join(process.cwd(), 'storyboard');
 const PORT = 4310;
@@ -23,7 +24,12 @@ const edit = readJson(join(PUBLIC, 'edit.json'), null);
 if (!edit) throw new Error('No public/edit.json yet: run scripts/cut.mjs first');
 const scene = readJson(join(PUBLIC, 'scene.json'), {});
 const answers = readJson(join(DIR, 'answers.json'), {});
-const round = readJson(REVIEW, { round: 0 }).round + 1;
+const last = readJson(REVIEW, { round: 0 }).round;
+const round = (Number.isInteger(last) ? last : 0) + 1;
+// Only this page gets the token: another website open in the browser cannot submit fake notes to Claude
+const TOKEN = randomBytes(24).toString('hex');
+const ORIGIN = `http://127.0.0.1:${PORT}`;
+const MAX_BODY = 1024 * 1024;
 
 // Same time rules as src/time.ts
 const frameOf = (at, fallback) => {
@@ -63,7 +69,7 @@ if (!process.argv.includes('--no-render')) {
   console.log('Rendering a small preview...');
   const props = JSON.stringify({ clip: 'clip.mp4', title: '', safeZone: false, captions: true, edit: null, scene: {}, screenSizes: {} });
   writeFileSync(join(DIR, 'props.json'), props);
-  const r = spawnSync(WIN ? 'npx.cmd' : 'npx', ['remotion', 'render', 'Reel', PREVIEW, `--props=${join(DIR, 'props.json')}`, '--scale=0.5', '--crf=26', '--log=error'], { stdio: 'inherit', shell: WIN });
+  const r = remotion(['render', 'Reel', PREVIEW, `--props=${join(DIR, 'props.json')}`, '--scale=0.5', '--crf=26', '--log=error'], { stdio: 'inherit' });
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
 
@@ -108,16 +114,32 @@ el.querySelector('textarea').oninput=e=>{state[c.id].note=e.target.value;if(e.ta
 m.appendChild(el)});
 const o=document.createElement('div');o.className='overall';o.innerHTML='<textarea id="overall" placeholder="Notes on the whole video (optional)"></textarea>';m.appendChild(o);
 document.getElementById('submit').onclick=async()=>{const body={round:${round},overall:document.getElementById('overall').value,beats:cards.map(c=>({id:c.id,name:c.name,detail:c.detail,atSeconds:+(c.from/30).toFixed(2),...state[c.id]}))};
-await fetch('/review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+await fetch('/review',{method:'POST',headers:{'content-type':'application/json','x-review-token':'${TOKEN}'},body:JSON.stringify(body)});
 m.style.display='none';document.querySelector('header').style.display='none';document.getElementById('done').style.display='block'};
 </script></body></html>`;
 
+const validReview = (r) => r && typeof r === 'object' && typeof r.overall === 'string' && Array.isArray(r.beats) && r.beats.length <= cards.length
+  && r.beats.every((b) => b && cards.some((c) => c.id === b.id) && ['keep', 'maybe', 'drop'].includes(b.verdict) && typeof b.note === 'string');
+
 const server = createServer((req, res) => {
+  const refuse = (code) => { res.writeHead(code); res.end(); };
+  if (req.headers.host !== `127.0.0.1:${PORT}`) return refuse(403); // blocks DNS rebinding from other sites
   if (req.method === 'POST' && req.url === '/review') {
+    if (req.headers.origin !== ORIGIN || req.headers['x-review-token'] !== TOKEN || !String(req.headers['content-type']).startsWith('application/json')) return refuse(403);
     let body = '';
-    req.on('data', (d) => (body += d));
+    req.on('data', (d) => {
+      body += d;
+      if (body.length > MAX_BODY) req.destroy();
+    });
     req.on('end', () => {
-      const review = JSON.parse(body);
+      let review;
+      try {
+        review = JSON.parse(body);
+      } catch {
+        return refuse(400);
+      }
+      if (!validReview(review)) return refuse(400);
+      review = { round, overall: review.overall, beats: review.beats };
       writeFileSync(REVIEW, JSON.stringify(review, null, 1));
       res.end('ok');
       const changes = review.beats.filter((b) => b.verdict !== 'keep');
@@ -143,12 +165,12 @@ const server = createServer((req, res) => {
     createReadStream(PREVIEW, { start, end }).pipe(res);
     return;
   }
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
   res.end(page);
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  const url = `http://127.0.0.1:${PORT}`;
+  const url = ORIGIN;
   console.log(`STORYBOARD ${url} (${cards.length} beats). Waiting for Submit...`);
   if (!process.argv.includes('--no-open')) {
     spawn(WIN ? 'cmd' : 'open', WIN ? ['/c', 'start', '', url] : [url], { detached: true, stdio: 'ignore' }).unref();

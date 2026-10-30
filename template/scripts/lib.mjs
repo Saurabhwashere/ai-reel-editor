@@ -25,9 +25,12 @@ export const MODELS_DIR = join(ENGINE, 'whisper-models');
 export const PUBLIC = join(process.cwd(), 'public');
 export const FPS = 30;
 
+// Runs Remotion's CLI through Node with no shell, so a file name like "a&b.mp4" can never run as a command on Windows
+export const remotion = (args, options = {}) => spawnSync(process.execPath, [join(process.cwd(), 'node_modules', '@remotion', 'cli', 'remotion-cli.js'), ...args], options);
+
 // Remotion's bundled ffmpeg / ffprobe, so the user never installs ffmpeg
 export function ff(tool, args) {
-  const r = spawnSync(WIN ? 'npx.cmd' : 'npx', ['remotion', tool, ...args], { encoding: 'utf8', shell: WIN, maxBuffer: 64 * 1024 * 1024 });
+  const r = remotion([tool, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`${tool} failed: ${(r.stderr || '').trim().split('\n').slice(-3).join(' | ')}`);
   return r;
 }

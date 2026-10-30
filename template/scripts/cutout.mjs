@@ -4,10 +4,9 @@
 //   node scripts/cutout.mjs
 //
 // Output: public/cutouts/<graphic number>/<reel frame>.png. About 1 second per 3 frames. Re-run after any re-cut.
-import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FPS, PUBLIC, WIN, ff } from './lib.mjs';
+import { FPS, PUBLIC, ff, remotion } from './lib.mjs';
 
 const edit = JSON.parse(readFileSync(join(PUBLIC, 'edit.json'), 'utf8'));
 const scene = JSON.parse(readFileSync(join(PUBLIC, 'scene.json'), 'utf8'));
@@ -22,7 +21,6 @@ const frameOf = (at, fallback) => {
 const wasm = join(PUBLIC, 'mediapipe', 'wasm');
 if (!existsSync(wasm)) cpSync(join('node_modules', '@mediapipe', 'tasks-vision', 'wasm'), wasm, { recursive: true });
 
-const npx = WIN ? 'npx.cmd' : 'npx';
 const srcDir = join(PUBLIC, 'cutouts', '_src');
 
 for (const [i, g] of (scene.graphics ?? []).entries()) {
@@ -50,7 +48,7 @@ for (const [i, g] of (scene.graphics ?? []).entries()) {
   console.log(`Cutting out ${count} frames for "${g.text}"...`);
   const props = join(process.cwd(), 'cutout-props.json');
   writeFileSync(props, JSON.stringify({ from, count }));
-  const r = spawnSync(npx, ['remotion', 'render', 'Cutout', out, '--sequence', '--image-format=png', `--props=${props}`, '--concurrency=2', '--log=error'], { stdio: 'inherit', shell: WIN });
+  const r = remotion(['render', 'Cutout', out, '--sequence', '--image-format=png', `--props=${props}`, '--concurrency=2', '--log=error'], { stdio: 'inherit' });
   rmSync(props, { force: true });
   if (r.status !== 0) process.exit(r.status ?? 1);
   // element-012.png -> <reel frame>.png
