@@ -1,11 +1,14 @@
-// Cuts every silence out of public/clip.mp4 -> public/edit.json (segments to keep + captions on the new timeline).
+// Cuts every silence out of public/clip.mp4 -> public/edit.json (segments to keep + captions on the new timeline),
+// speeds the talk up a little, and plans jump-cut zooms for Reels pacing.
 // Nothing is re-encoded here: Remotion plays the kept segments back to back at render time.
 //
-//   node scripts/cut.mjs [--gap 0.1] [--pad 0.05] [--drop "3,7"]
+//   node scripts/cut.mjs [--gap 0.1] [--pad 0.05] [--drop "3,7"] [--speed 1.1] [--punch 1.3]
 //
 // --gap   longest pause (seconds) left in; longer ones are cut. Default 0.1.
 // --pad   breathing room (seconds) kept before and after speech. Default 0.05.
 // --drop  word numbers (from captions.json, starting at 0) to remove, e.g. a repeated take or "um". Ranges work: "4-9,20".
+// --speed how much faster than filmed. Pitch stays natural. Default 1.1; 1 turns it off.
+// --punch biggest jump-cut zoom. Default 1.3; 1 turns jump cuts off.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FPS, PUBLIC, audioSeconds, durationSeconds, ff } from './lib.mjs';
@@ -16,6 +19,8 @@ const arg = (name, fallback) => {
 };
 const GAP = Number(arg('gap', 0.1));
 const PAD = Number(arg('pad', 0.05));
+const SPEED = Number(arg('speed', 1.1));
+const PUNCH = Number(arg('punch', 1.3));
 const DROP = new Set(String(arg('drop', '')).split(',').filter(Boolean).flatMap((p) => {
   const [a, b = a] = p.split('-').map(Number);
   return Array.from({ length: b - a + 1 }, (_, k) => a + k);
@@ -83,8 +88,8 @@ const segments = merged
   .map((k) => ({ fromFrame: Math.round(k.from * FPS), toFrame: Math.round(k.to * FPS) }))
   .filter((s) => s.toFrame - s.fromFrame >= 2)
   .map((s) => {
-    const seg = { ...s, startFrame: out };
-    out += s.toFrame - s.fromFrame;
+    const seg = { ...s, startFrame: out, frames: Math.max(1, Math.round((s.toFrame - s.fromFrame) / SPEED)) };
+    out += seg.frames;
     return seg;
   });
 
@@ -92,7 +97,7 @@ const segments = merged
 const toOut = (ms) => {
   const f = (ms / 1000) * FPS;
   const seg = segments.find((s) => f >= s.fromFrame && f < s.toFrame);
-  return seg ? { seg, frame: seg.startFrame + (f - seg.fromFrame) } : null;
+  return seg ? { seg, frame: seg.startFrame + (f - seg.fromFrame) / SPEED } : null;
 };
 // Whisper often starts a word inside the pause before it: snap it to where speech resumes.
 const snapIntoSpeech = (w) => {
@@ -105,10 +110,36 @@ const captions = words.flatMap((w, i) => {
   const startMs = toOut(w.startMs) ? w.startMs : snapIntoSpeech(w);
   const start = toOut(startMs);
   if (!start) return [];
-  const endFrame = Math.min(start.seg.startFrame + (start.seg.toFrame - start.seg.fromFrame), start.frame + ((w.endMs - startMs) / 1000) * FPS);
+  const endFrame = Math.min(start.seg.startFrame + start.seg.frames, start.frame + (((w.endMs - startMs) / 1000) * FPS) / SPEED);
   return [{ ...w, i, startMs: Math.round((start.frame / FPS) * 1000), endMs: Math.round((endFrame / FPS) * 1000), timestampMs: null }];
 });
 
-writeFileSync(join(PUBLIC, 'edit.json'), JSON.stringify({ fps: FPS, durationInFrames: out, segments, captions }, null, 1));
+// 6. Jump cuts: a hard zoom change at real cuts and new sentences, so a single take still feels cut.
+// Never closer together than MIN_GAP; a long stretch with no sentence end gets one at a word near the middle.
+const MIN_GAP = 2.5 * FPS;
+const MAX_GAP = 5 * FPS;
+const startOf = (c) => Math.round((c.startMs / 1000) * FPS);
+const spots = new Set(segments.slice(1).map((s) => s.startFrame));
+captions.forEach((c, i) => { if (i && /[.?!]$/.test(captions[i - 1].text.trim())) spots.add(startOf(c)); });
+const chosen = [];
+let last = 0;
+for (const f of [...spots].sort((a, b) => a - b)) {
+  while (f - last > MAX_GAP) {
+    const fill = captions.map(startOf).find((w) => w >= last + MIN_GAP && w <= f - MIN_GAP);
+    if (fill === undefined) break;
+    chosen.push(fill);
+    last = fill;
+  }
+  if (f - last >= MIN_GAP) {
+    chosen.push(f);
+    last = f;
+  }
+}
+for (let w; out - last > MAX_GAP && (w = captions.map(startOf).find((x) => x >= last + MAX_GAP * 0.6)) !== undefined; last = w) chosen.push(w);
+// in, out, further in, out: the pattern feels like two cameras
+const levels = [1 + (PUNCH - 1) * 0.6, 1, PUNCH, 1];
+const punches = PUNCH > 1 ? chosen.map((frame, i) => ({ frame, zoom: Number(levels[i % 4].toFixed(3)) })) : [];
+
+writeFileSync(join(PUBLIC, 'edit.json'), JSON.stringify({ fps: FPS, speed: SPEED, durationInFrames: out, segments, punches, captions }, null, 1));
 const cutSec = total - out / FPS;
-console.log(`OK ${segments.length} segments, ${total.toFixed(2)}s -> ${(out / FPS).toFixed(2)}s (cut ${cutSec.toFixed(2)}s), ${captions.length}/${words.length} words kept`);
+console.log(`OK ${segments.length} segments, ${total.toFixed(2)}s -> ${(out / FPS).toFixed(2)}s (${SPEED}x, ${cutSec.toFixed(2)}s shorter), ${captions.length}/${words.length} words kept, ${punches.length} jump cuts`);

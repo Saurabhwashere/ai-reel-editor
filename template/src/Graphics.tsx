@@ -33,8 +33,10 @@ const Band: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // A box (the layout's slot, or a centred card when there is none)
 const Box: React.FC<{ slot: Rect | null; children: React.ReactNode; pad?: number }> = ({ slot, children, pad = 70 }) => {
   const r = slot ?? { x: 70, y: 380, w: 940, h: 940, radius: 0, opacity: 1 };
+  const top = Math.max(r.y, SAFE.top); // starts below Instagram's top bar, ends at the slot's own bottom edge
+  const bottom = Math.min(r.y + r.h, 1920 - SAFE.bottom);
   return (
-    <div style={{ position: 'absolute', left: r.x + pad / 2, top: Math.max(r.y, SAFE.top) + pad / 2, width: r.w - pad, height: Math.min(r.h, 1920 - SAFE.bottom - Math.max(r.y, SAFE.top)) - pad, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+    <div style={{ position: 'absolute', left: r.x + pad / 2, top: top + pad / 2, width: r.w - pad, height: bottom - top - pad, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       {children}
     </div>
   );
@@ -80,16 +82,17 @@ const Card: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }>
 
 const List: React.FC<Props<Extract<Graphic, { kind: 'list' }>>> = ({ g, len, slot, itemFrames = [] }) => {
   const { f, fps, enter, exit } = useEnterExit(len);
+  const compact = g.items.length > 3; // 4+ items must still fit the top half in a split
   return (
     <Box slot={slot}>
-      <Card style={{ width: '100%', opacity: exit, transform: `translateY(${(1 - enter) * 80}px)` }}>
-        {g.title ? <div style={{ fontFamily: FONT, fontWeight: 800, fontSize: 64, color: YELLOW, marginBottom: 28 }}>{g.title}</div> : null}
+      <Card style={{ width: '100%', opacity: exit, ...(compact ? { padding: '36px 48px' } : {}), transform: `translateY(${(1 - enter) * 80}px)` }}>
+        {g.title ? <div style={{ fontFamily: FONT, fontWeight: 800, fontSize: compact ? 54 : 64, color: YELLOW, marginBottom: compact ? 14 : 28 }}>{g.title}</div> : null}
         {g.items.map((it, i) => {
           const s = spring({ frame: f - (itemFrames[i] ?? i * 12), fps, config: { damping: 14 } });
           return (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 26, margin: '14px 0', opacity: s, transform: `translateX(${(1 - s) * -90}px)` }}>
-              <div style={{ flexShrink: 0, width: 72, height: 72, borderRadius: 36, background: YELLOW, color: '#111', fontFamily: FONT, fontWeight: 900, fontSize: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</div>
-              <div style={{ fontFamily: FONT, fontWeight: 800, fontSize: 62, color: 'white', lineHeight: 1.1 }}>{it.text}</div>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: compact ? 20 : 26, margin: compact ? '6px 0' : '14px 0', opacity: s, transform: `translateX(${(1 - s) * -90}px)` }}>
+              <div style={{ flexShrink: 0, width: compact ? 52 : 72, height: compact ? 52 : 72, borderRadius: 36, background: YELLOW, color: '#111', fontFamily: FONT, fontWeight: 900, fontSize: compact ? 30 : 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</div>
+              <div style={{ fontFamily: FONT, fontWeight: 800, fontSize: compact ? 48 : 62, color: 'white', lineHeight: 1.1 }}>{it.text}</div>
             </div>
           );
         })}

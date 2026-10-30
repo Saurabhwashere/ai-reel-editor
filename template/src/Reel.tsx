@@ -23,11 +23,11 @@ export type ReelProps = {
 const videoStyle: React.CSSProperties = { width: '100%', height: '100%', objectFit: 'cover', objectPosition: '50% 30%' };
 
 // One kept part of the clip. A 1-frame volume ramp at each end stops clicks at the cut.
-const Part: React.FC<{ clip: string; seg: Segment }> = ({ clip, seg }) => {
-  const len = seg.toFrame - seg.fromFrame;
+const Part: React.FC<{ clip: string; seg: Segment; speed: number }> = ({ clip, seg, speed }) => {
+  const len = seg.frames ?? seg.toFrame - seg.fromFrame;
   return (
     <Sequence from={seg.startFrame} durationInFrames={len} premountFor={15}>
-      <OffthreadVideo src={staticFile(clip)} trimBefore={seg.fromFrame} style={{ ...videoStyle, position: 'absolute', inset: 0 }} volume={(f) => Math.min(1, f + 0.5, len - f - 0.5)} />
+      <OffthreadVideo src={staticFile(clip)} trimBefore={seg.fromFrame} playbackRate={speed} style={{ ...videoStyle, position: 'absolute', inset: 0 }} volume={(f) => Math.min(1, f + 0.5, len - f - 0.5)} />
     </Sequence>
   );
 };
@@ -40,7 +40,7 @@ export const Reel: React.FC<ReelProps> = ({ clip, title, safeZone, captions, edi
   const layouts: ResolvedLayout[] = (scene.layouts ?? []).map((l) => ({ at: at(l.at), kind: l.kind })).filter((l) => l.at >= 0);
   const layout = layoutAt(frame, layouts);
   // split: graphics stop above the strip where the captions sit; screen recordings keep the whole half
-  const CAPTION_STRIP = 150;
+  const CAPTION_STRIP = 170;
   const slot = layout.hasContent ? layout.content : null;
   const graphicSlot = slot && layout.kind === 'split' ? { ...slot, h: slot.h - CAPTION_STRIP } : slot;
 
@@ -57,6 +57,10 @@ export const Reel: React.FC<ReelProps> = ({ clip, title, safeZone, captions, edi
   const behind = graphics.filter((x) => x.g.kind === 'behind');
   const overlays = graphics.filter((x) => x.g.kind !== 'screen' && x.g.kind !== 'behind');
 
+  // Jump cuts zoom the speaker in hard steps, full-frame only. Off during text behind the head: the cut-out must line up.
+  const behindNow = behind.some((b) => frame >= b.from && frame < b.from + b.len);
+  const punch = layout.kind === 'talking' && !behindNow ? ([...(edit?.punches ?? [])].reverse().find((p) => frame >= p.frame)?.zoom ?? 1) : 1;
+
   const hook = scene.hook ?? (title ? { text: title, variant: 'plain' as const } : null);
   const hookLen = hook ? at(hook.until, fps * 2.5) : 0;
 
@@ -72,7 +76,9 @@ export const Reel: React.FC<ReelProps> = ({ clip, title, safeZone, captions, edi
         {/* the speaker: one set of players for the whole reel, moved and cropped by the layout */}
         {/* in pip the speaker bubble sits above the screen recording */}
         <div style={{ ...rectStyle(layout.speaker), zIndex: layout.kind === 'pip' ? 2 : 0 }}>
-          {edit ? edit.segments.map((seg) => <Part key={seg.startFrame} clip={clip} seg={seg} />) : <OffthreadVideo src={staticFile(clip)} style={videoStyle} />}
+          <div style={{ position: 'absolute', inset: 0, transform: `scale(${punch})`, transformOrigin: '50% 30%' }}>
+            {edit ? edit.segments.map((seg) => <Part key={seg.startFrame} clip={clip} seg={seg} speed={edit.speed ?? 1} />) : <OffthreadVideo src={staticFile(clip)} style={videoStyle} />}
+          </div>
         </div>
         {/* text behind the head: words on the speaker, then the cut-out speaker back on top */}
         {behind.map(({ g, from, len, index }) => (

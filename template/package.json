@@ -1,6 +1,6 @@
 {
   "name": "ai-reel-editor-project",
-  "version": "0.9.2",
+  "version": "0.10.1",
   "private": true,
   "description": "Remotion project used by the /ai-reel-editor Claude skill",
   "scripts": {

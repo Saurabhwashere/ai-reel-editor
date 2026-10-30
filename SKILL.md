@@ -44,6 +44,8 @@ Run everything from `~/.ai-reel-editor/project/`.
 4. Fix wrong words in `public/captions.json` (only the `text` field; keep the leading space).
    Whisper often hears "Claude" as "cloud" or "claws".
 5. Cut the pauses: `node scripts/cut.mjs`
+   - It also speeds the talk up 1.1x (natural pitch) and adds jump cuts: a hard zoom change at cuts and new sentences.
+   - Turn either off or change it with `--speed 1` or `--punch 1`. "Slower" and "too much zoom" notes map to these.
    - Repeated takes: `node scripts/takes.mjs` lists lines said more than once, with word numbers.
    - Drop the worse takes, "um", false starts: `node scripts/cut.mjs --drop "12-20,45-53"`.
      Usually keep the last take of a line. Word numbers come from captions.json (0 = first word).

@@ -1,10 +1,11 @@
 import type { Caption } from '@remotion/captions';
 
 // public/edit.json, written by scripts/cut.mjs. Frames are in the original clip (from/to) and the reel (start).
-export type Segment = { fromFrame: number; toFrame: number; startFrame: number };
+export type Segment = { fromFrame: number; toFrame: number; startFrame: number; frames?: number }; // frames = length in the reel
+export type Punch = { frame: number; zoom: number }; // jump cut: from this reel frame, hold this zoom
 // `i` = the word's number in captions.json, so a scene can point at a word and survive a re-cut
 export type EditCaption = Caption & { i: number };
-export type Edit = { fps: number; durationInFrames: number; segments: Segment[]; captions: EditCaption[] };
+export type Edit = { fps: number; speed?: number; durationInFrames: number; segments: Segment[]; punches?: Punch[]; captions: EditCaption[] };
 
 // public/scene.json, written by Claude after the storyboard is approved. See references/scene.md.
 // A time is a reel frame (number) or a spoken word: { "word": 12 } = when word 12 of captions.json starts.

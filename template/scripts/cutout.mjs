@@ -4,7 +4,7 @@
 //   node scripts/cutout.mjs
 //
 // Output: public/cutouts/<graphic number>/<reel frame>.png. About 1 second per 3 frames. Re-run after any re-cut.
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FPS, PUBLIC, ff, remotion } from './lib.mjs';
 
@@ -22,6 +22,8 @@ const wasm = join(PUBLIC, 'mediapipe', 'wasm');
 if (!existsSync(wasm)) cpSync(join('node_modules', '@mediapipe', 'tasks-vision', 'wasm'), wasm, { recursive: true });
 
 const srcDir = join(PUBLIC, 'cutouts', '_src');
+const allDir = join(PUBLIC, 'cutouts', '_all');
+const speed = edit.speed ?? 1;
 
 for (const [i, g] of (scene.graphics ?? []).entries()) {
   if (g.kind !== 'behind') continue;
@@ -32,17 +34,23 @@ for (const [i, g] of (scene.graphics ?? []).entries()) {
   rmSync(out, { recursive: true, force: true });
   rmSync(srcDir, { recursive: true, force: true });
   mkdirSync(srcDir, { recursive: true });
+  mkdirSync(allDir, { recursive: true });
 
   // Same crop as the speaker in the reel (cover, 30% from the top), named by reel frame
   for (const s of edit.segments) {
     const a = Math.max(from, s.startFrame);
-    const b = Math.min(to, s.startFrame + s.toFrame - s.fromFrame);
+    const b = Math.min(to, s.startFrame + (s.frames ?? s.toFrame - s.fromFrame));
     if (b <= a) continue;
-    const t = (s.fromFrame + a - s.startFrame) / FPS;
-    ff('ffmpeg', ['-loglevel', 'error', '-y', '-ss', t.toFixed(4), '-i', join(PUBLIC, 'clip.mp4'), '-frames:v', String(b - a),
+    // the reel runs faster than the clip: take every source frame, then pick the one each reel frame shows
+    const srcAt = (r) => s.fromFrame + Math.round((r - s.startFrame) * speed);
+    const first = srcAt(a);
+    const span = srcAt(b - 1) - first + 1;
+    ff('ffmpeg', ['-loglevel', 'error', '-y', '-ss', (first / FPS).toFixed(4), '-i', join(PUBLIC, 'clip.mp4'), '-frames:v', String(span),
       '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(in_w-1080)/2:(in_h-1920)*0.3',
-      '-q:v', '2', '-start_number', String(a), join(srcDir, '%d.jpg')]);
+      '-q:v', '2', '-start_number', String(first), join(allDir, '%d.jpg')]);
+    for (let r = a; r < b; r++) copyFileSync(join(allDir, `${srcAt(r)}.jpg`), join(srcDir, `${r}.jpg`));
   }
+  rmSync(allDir, { recursive: true, force: true });
 
   const count = to - from;
   console.log(`Cutting out ${count} frames for "${g.text}"...`);

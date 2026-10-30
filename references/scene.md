@@ -12,6 +12,11 @@ Every `at` / `until` is either:
 Prefer words. They stay right after a re-cut. A graphic whose start word was cut is skipped.
 `until` left out = 2 seconds on screen.
 
+## Pacing
+`cut.mjs` speeds the talk up 1.1x and plans jump cuts (zooms of 1.18x and 1.3x, 2.5–5 s apart) by itself.
+Jump cuts run only in the `talking` layout, and pause during `behind` graphics so the cut-out lines up.
+Use `{ "word": n }` times: a frame number stops being right if the speed changes.
+
 ## Layouts
 | kind | What you see | Use for |
 |---|---|---|
